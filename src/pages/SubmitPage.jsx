@@ -130,8 +130,13 @@ function SubmitPage({ mobileMode = false }) {
 
     try {
       await scanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 260, height: 120 } },
+        { facingMode: "environment", advanced: [{ torch: false }] },
+        { 
+          fps: 15, 
+          qrbox: { width: 260, height: 120 },
+          aspectRatio: 1.33,
+          disableFlip: false
+        },
         (decodedText) => {
           setSerialNumber(decodedText.trim());
           triggerScanConfirmation();

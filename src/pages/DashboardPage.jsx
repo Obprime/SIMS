@@ -86,48 +86,6 @@ function DashboardPage() {
     return scopedReports;
   }, [activeFilter, scopedReports, startOfMonth, startOfToday, startOfWeek]);
 
-  const exportFilteredReports = () => {
-    if (!filteredReports.length) {
-      window.alert("No reports available for the selected filter.");
-      return;
-    }
-
-    const headers = [
-      "Serial Number",
-      "Customer Name",
-      "Phone Number",
-      "ID Number",
-      "Branch",
-      "Agent",
-      "Manager Comment",
-      "Submitted At",
-    ];
-
-    const rows = filteredReports.map((entry) => [
-      entry.serialNumber || "",
-      entry.customerName || "",
-      entry.phoneNumber || "",
-      entry.idNumber || "",
-      entry.branchId || "",
-      entry.submittedByEmail || "",
-      entry.managerComment || "",
-      new Date(entry.submittedAt).toLocaleString(),
-    ]);
-
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers, ...rows]
-        .map((line) => line.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(","))
-        .join("\n");
-
-    const link = document.createElement("a");
-    link.href = encodeURI(csvContent);
-    link.download = `${activeFilter}-reports.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   const onLogout = async () => {
     await logout();
     navigate("/login", { replace: true });
@@ -159,22 +117,18 @@ function DashboardPage() {
         </div>
       </header>
 
-      <section className="identity-grid">
-        <article className="panel identity-card">
-          <p className="stat-label">Agent Name</p>
-          <p className="stat-value small">{profile?.name || user.email}</p>
-        </article>
-        <article className="panel identity-card">
-          <p className="stat-label">Branch Name</p>
-          <p className="stat-value small">{profile?.branchId || "Manager Access"}</p>
-        </article>
-      </section>
-
       <section className="dashboard-grid metrics-grid">
         <article className={`stat-card metric-card ${activeFilter === "today" ? "active" : ""}`}>
           <button className="metric-button" type="button" onClick={() => setActiveFilter("today")}>
           <p className="stat-label">Today</p>
           <p className="stat-value">{totalToday}</p>
+          </button>
+          <button 
+            className="view-details-btn"
+            type="button"
+            onClick={() => setActiveFilter("today")}
+          >
+            View Details
           </button>
         </article>
         <article className={`stat-card metric-card ${activeFilter === "week" ? "active" : ""}`}>
@@ -182,11 +136,25 @@ function DashboardPage() {
           <p className="stat-label">This Week</p>
           <p className="stat-value">{totalWeek}</p>
           </button>
+          <button 
+            className="view-details-btn"
+            type="button"
+            onClick={() => setActiveFilter("week")}
+          >
+            View Details
+          </button>
         </article>
         <article className={`stat-card metric-card ${activeFilter === "month" ? "active" : ""}`}>
           <button className="metric-button" type="button" onClick={() => setActiveFilter("month")}>
           <p className="stat-label">This Month</p>
           <p className="stat-value">{totalMonth}</p>
+          </button>
+          <button 
+            className="view-details-btn"
+            type="button"
+            onClick={() => setActiveFilter("month")}
+          >
+            View Details
           </button>
         </article>
         <article className={`stat-card metric-card ${activeFilter === "all" ? "active" : ""}`}>
@@ -194,52 +162,14 @@ function DashboardPage() {
           <p className="stat-label">All Time</p>
           <p className="stat-value">{scopedReports.length}</p>
           </button>
-        </article>
-      </section>
-
-      <section className="panel table-panel">
-        <div className="panel-head">
-          <h2>Filtered Reports</h2>
-          <button className="btn ghost" type="button" onClick={exportFilteredReports}>
-            Download CSV
+          <button 
+            className="view-details-btn"
+            type="button"
+            onClick={() => setActiveFilter("all")}
+          >
+            View Details
           </button>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Serial Number</th>
-                <th>Customer Name</th>
-                <th>Phone Number</th>
-                <th>ID Number</th>
-                <th>Agent</th>
-                <th>Manager Comment</th>
-                <th>Submitted At</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredReports.length === 0 ? (
-                <tr className="empty-row">
-                  <td colSpan="8">No reports submitted yet.</td>
-                </tr>
-              ) : (
-                filteredReports.slice(0, 50).map((entry, index) => (
-                  <tr key={entry.id}>
-                    <td>{index + 1}</td>
-                    <td>{entry.serialNumber}</td>
-                    <td>{entry.customerName}</td>
-                    <td>{entry.phoneNumber}</td>
-                    <td>{entry.idNumber}</td>
-                    <td>{entry.submittedByEmail || "-"}</td>
-                    <td>{entry.managerComment || "-"}</td>
-                    <td>{new Date(entry.submittedAt).toLocaleString()}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        </article>
       </section>
     </main>
   );
