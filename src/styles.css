@@ -72,6 +72,13 @@ h2 {
   justify-content: flex-end;
 }
 
+.mode-btn.active {
+  background: linear-gradient(120deg, #1d4ed8 0%, #0ea5e9 100%);
+  border-color: transparent;
+  color: #ffffff;
+  box-shadow: 0 12px 28px rgba(29, 78, 216, 0.22);
+}
+
 .phone-handoff {
   display: grid;
   place-items: center;
@@ -619,6 +626,67 @@ select:focus {
 
 .table-panel {
   margin-top: 0.8rem;
+}
+
+.manager-indicator {
+  margin: 0.55rem 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #1d4ed8;
+  background: rgba(29, 78, 216, 0.1);
+  border: 1px solid rgba(29, 78, 216, 0.22);
+  border-radius: 999px;
+  padding: 0.22rem 0.62rem;
+}
+
+.manager-filter-panel {
+  background: linear-gradient(145deg, #ffffff 0%, #f6faff 100%);
+}
+
+.filter-grid-modern {
+  gap: 0.55rem;
+}
+
+.filter-toggle-chip {
+  width: fit-content;
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.08);
+  padding: 0.28rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.date-row-modern {
+  gap: 0.55rem;
+}
+
+.date-input-stack {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.date-input-stack input {
+  min-width: 155px;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.date-input-label {
+  font-size: 0.72rem;
+  color: #3f5f86;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.date-separator {
+  color: #51627a;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .branch-chip-row {

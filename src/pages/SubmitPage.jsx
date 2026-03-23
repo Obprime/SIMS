@@ -1,18 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { addDoc, collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+} from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 
 const REPORTS_COLLECTION = "reports";
+const SCAN_SESSIONS_COLLECTION = "scanSessions";
 
 function SubmitPage({ mobileMode = false }) {
   const { user, role, profile, logout } = useAuth();
   const navigate = useNavigate();
   const scannerRef = useRef(null);
   const scanFeedbackTimerRef = useRef(null);
+  const scanLockRef = useRef(false);
   const [scannerOn, setScannerOn] = useState(false);
   const [showScannerUI, setShowScannerUI] = useState(false);
   const [serialNumber, setSerialNumber] = useState("");
@@ -22,10 +33,23 @@ function SubmitPage({ mobileMode = false }) {
   const [reports, setReports] = useState([]);
   const [message, setMessage] = useState({ text: "", type: "" });
   const [usePhoneScanner, setUsePhoneScanner] = useState(false);
+  const [manualEntryMode, setManualEntryMode] = useState(false);
+  const [selectedSerialMode, setSelectedSerialMode] = useState("");
   const [isDesktop, setIsDesktop] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [scanCaptured, setScanCaptured] = useState(false);
+  const [handoffSessionId, setHandoffSessionId] = useState("");
   const hasScannedSerial = Boolean(serialNumber.trim());
+  const hasSelectedSerialMode = Boolean(selectedSerialMode);
+  const serialInputReadOnly = selectedSerialMode === "camera" || selectedSerialMode === "phone";
+  const mobileSessionId = useMemo(() => {
+    if (!mobileMode || typeof window === "undefined") {
+      return "";
+    }
+
+    return new URLSearchParams(window.location.search).get("session") || "";
+  }, [mobileMode]);
+  const isPhoneHandoff = mobileMode && Boolean(mobileSessionId);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -34,7 +58,6 @@ function SubmitPage({ mobileMode = false }) {
 
     const syncScreenMode = () => {
       setIsDesktop(window.innerWidth >= 960);
-      setShareUrl(`${window.location.origin}/mobile-scan`);
     };
 
     syncScreenMode();
@@ -42,6 +65,24 @@ function SubmitPage({ mobileMode = false }) {
 
     return () => window.removeEventListener("resize", syncScreenMode);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (mobileMode) {
+      setShareUrl(window.location.href);
+      return;
+    }
+
+    if (!handoffSessionId) {
+      setShareUrl("");
+      return;
+    }
+
+    setShareUrl(`${window.location.origin}/mobile-scan?session=${handoffSessionId}`);
+  }, [handoffSessionId, mobileMode]);
 
   useEffect(() => {
     return () => {
@@ -63,6 +104,47 @@ function SubmitPage({ mobileMode = false }) {
       stopScanner();
     };
   }, []);
+
+  useEffect(() => {
+    if (mobileMode || !db) {
+      return undefined;
+    }
+
+    const sessionId =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const sessionRef = doc(db, SCAN_SESSIONS_COLLECTION, sessionId);
+
+    setHandoffSessionId(sessionId);
+
+    const unsubscribe = onSnapshot(sessionRef, async (snapshot) => {
+      const data = snapshot.data();
+      const incomingSerial = String(data?.serialNumber || "").replace(/\D/g, "").slice(0, 12);
+
+      if (!incomingSerial) {
+        return;
+      }
+
+      setSerialNumber(incomingSerial);
+      triggerScanConfirmation();
+      setFeedback("Serial received from phone scanner.", "success");
+      setUsePhoneScanner(false);
+      setShowScannerUI(false);
+      setSelectedSerialMode("phone");
+
+      try {
+        await deleteDoc(sessionRef);
+      } catch {
+        // Ignore cleanup issues for completed handoff sessions.
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      deleteDoc(sessionRef).catch(() => undefined);
+    };
+  }, [mobileMode]);
 
   const scopedReports = useMemo(() => {
     if (role === "manager" || role === "gm" || role === "admin") {
@@ -123,6 +205,8 @@ function SubmitPage({ mobileMode = false }) {
       return;
     }
 
+    setManualEntryMode(false);
+    setSelectedSerialMode("camera");
     setShowScannerUI(true);
     setUsePhoneScanner(false);
 
@@ -132,11 +216,43 @@ function SubmitPage({ mobileMode = false }) {
       await scanner.start(
         { facingMode: "environment" },
         { fps: 12, qrbox: { width: 260, height: 120 } },
-        (decodedText) => {
-          setSerialNumber(decodedText.trim());
-          triggerScanConfirmation();
-          setFeedback("Barcode scanned successfully.", "success");
-          stopScanner();
+        async (decodedText) => {
+          if (scanLockRef.current) {
+            return;
+          }
+
+          scanLockRef.current = true;
+
+          try {
+            const normalizedSerial = decodedText.replace(/\D/g, "").slice(0, 12);
+
+            if (!/^00\d{10}$/.test(normalizedSerial)) {
+              setFeedback("Scanned serial must be 12 digits and start with 00.", "error");
+              return;
+            }
+
+            if (isPhoneHandoff && mobileSessionId && db) {
+              await setDoc(doc(db, SCAN_SESSIONS_COLLECTION, mobileSessionId), {
+                serialNumber: normalizedSerial,
+                submittedByUid: user.uid,
+                submittedAt: new Date().toISOString(),
+              });
+
+              triggerScanConfirmation();
+              setFeedback("Serial sent to desktop successfully.", "success");
+              await stopScanner();
+              return;
+            }
+
+            setSerialNumber(normalizedSerial);
+            triggerScanConfirmation();
+            setFeedback("Barcode scanned successfully.", "success");
+            await stopScanner();
+          } finally {
+            window.setTimeout(() => {
+              scanLockRef.current = false;
+            }, 400);
+          }
         },
         () => {
           // Ignore per-frame decode warnings.
@@ -177,6 +293,10 @@ function SubmitPage({ mobileMode = false }) {
       return "Scan barcode first to capture serial number.";
     }
 
+    if (!/^00\d{10}$/.test(serialNumber.trim())) {
+      return "Serial number must be exactly 12 digits and start with 00.";
+    }
+
     if (!customerName.trim()) {
       return "Customer name is required.";
     }
@@ -190,7 +310,7 @@ function SubmitPage({ mobileMode = false }) {
     }
 
     return null;
-  };
+  }
 
   const onSubmit = async (event) => {
     event.preventDefault();
@@ -236,7 +356,29 @@ function SubmitPage({ mobileMode = false }) {
       await stopScanner();
     }
 
-    setUsePhoneScanner((prev) => !prev);
+    if (!usePhoneScanner) {
+      setManualEntryMode(false);
+      setSelectedSerialMode("phone");
+      setUsePhoneScanner(true);
+      setShowScannerUI(true);
+      return;
+    }
+
+    setSelectedSerialMode("");
+    setUsePhoneScanner(false);
+    setShowScannerUI(false);
+  };
+
+  const enableManualEntry = async () => {
+    if (scannerOn || scannerRef.current) {
+      await stopScanner();
+    }
+
+    setUsePhoneScanner(false);
+    setShowScannerUI(false);
+    setManualEntryMode(true);
+    setSelectedSerialMode("manual");
+    setFeedback("Manual serial entry enabled.", "success");
   };
 
   return (
@@ -274,33 +416,55 @@ function SubmitPage({ mobileMode = false }) {
             <h2>1. Scan SIM Barcode</h2>
             <div className="scan-actions">
               {isDesktop && !mobileMode ? (
-                <button className="btn ghost" type="button" onClick={togglePhoneScanner}>
+                <button
+                  className={`btn ghost mode-btn ${selectedSerialMode === "phone" ? "active" : ""}`}
+                  type="button"
+                  onClick={togglePhoneScanner}
+                >
                   {usePhoneScanner ? "Use Desktop Camera" : "Use Phone Scanner"}
                 </button>
               ) : null}
               <button
-                className="btn ghost"
+                className={`btn ghost mode-btn ${selectedSerialMode === "camera" ? "active" : ""}`}
                 type="button"
                 onClick={scannerOn ? stopScanner : startScanner}
                 disabled={usePhoneScanner}
               >
                 {scannerOn ? "Stop Camera" : "Start Camera"}
               </button>
+              <button
+                className={`btn ghost mode-btn ${selectedSerialMode === "manual" ? "active" : ""}`}
+                type="button"
+                onClick={enableManualEntry}
+              >
+                Input Manually
+              </button>
             </div>
           </div>
           <p className="helper">
             {mobileMode
-              ? "Use your phone camera to scan the SIM barcode. The form opens after a successful scan."
-              : "Scan barcode first. The form will open automatically after scan."}
+              ? isPhoneHandoff
+                ? "Use your phone camera to scan the SIM barcode. The serial will be sent to the desktop form instantly."
+                : "Use your phone camera to scan the SIM barcode. The form opens after a successful scan."
+              : selectedSerialMode === "manual"
+                ? "Manual entry is active. Enter the 12-digit serial number below. Scanner preview is hidden."
+                : !hasSelectedSerialMode
+                  ? "Select a mode to begin serial capture."
+                : "Scan barcode first. The form will open automatically after scan."}
           </p>
+          {!mobileMode && !hasSelectedSerialMode ? (
+            <div className="empty-state-panel">
+              <p className="helper">Choose Start Camera, Use Phone Scanner, or Input Manually to continue.</p>
+            </div>
+          ) : null}
           {showScannerUI && (
             <>
               {usePhoneScanner ? (
                 <div className={`reader reader-modern phone-handoff ${scanCaptured ? "scan-success" : ""}`}>
                   <p className="stat-label">Phone Scanner Access</p>
-                  <QRCodeSVG value={shareUrl || "https://example.com"} size={172} includeMargin />
+                  <QRCodeSVG value={shareUrl || "https://simsreport.netlify.app/"} size={172} includeMargin />
                   <p className="helper">
-                    Scan this QR code with a phone, sign in if needed, and use the phone camera to continue.
+                    Scan this QR code with a phone, open the scanner there, and the captured serial will fill this desktop form.
                   </p>
                 </div>
               ) : (
@@ -312,20 +476,34 @@ function SubmitPage({ mobileMode = false }) {
             </>
           )}
 
-          <label htmlFor="serialNumber">Serial Number</label>
-          <input
-            id="serialNumber"
-            value={serialNumber}
-            onChange={(e) => setSerialNumber(e.target.value)}
-            placeholder="Scanned serial appears here"
-          />
+          {hasSelectedSerialMode ? (
+            <>
+              <label htmlFor="serialNumber">Serial Number (12 digits)</label>
+              <input
+                id="serialNumber"
+                inputMode="numeric"
+                value={serialNumber}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/\D/g, "").slice(0, 12);
+                  setSerialNumber(cleaned);
+                }}
+                maxLength={12}
+                placeholder="000000000000"
+                readOnly={serialInputReadOnly}
+              />
+            </>
+          ) : null}
         </article>
 
         <article className="panel form-panel-modern">
           <h2>2. Customer Details</h2>
           {!hasScannedSerial ? (
             <div className="empty-state-panel">
-              <p className="helper">Scan barcode first, then the form will appear automatically.</p>
+              <p className="helper">
+                {isPhoneHandoff
+                  ? "Use the phone scanner to send the serial here. This form will unlock on the desktop as soon as the scan is received."
+                  : "Scan barcode first, then the form will appear automatically."}
+              </p>
             </div>
           ) : (
             <form onSubmit={onSubmit}>
@@ -348,14 +526,36 @@ function SubmitPage({ mobileMode = false }) {
                 required
               />
 
-              <label htmlFor="idNumber">ID Number (GHA-XXXXXXXXX-X)</label>
+              <label htmlFor="idNumber">ID Number NO HYPHEN</label>
               <input
                 id="idNumber"
                 value={idNumber}
-                onChange={(e) =>
-                  setIdNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""))
-                }
-                placeholder="GHA-718814270-6"
+                onChange={(e) => {
+                  const input = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                  
+                  // Remove all chars, then rebuild with format
+                  let clean = input;
+                  
+                  // Ensure GHA is at start
+                  if (!clean.startsWith("GHA")) {
+                    clean = "GHA" + clean.replace(/[^0-9]/g, "");
+                  }
+                  
+                  // Extract digits after GHA (max 10: 9 + 1)
+                  const digits = clean.substring(3).replace(/[^0-9]/g, "").slice(0, 10);
+                  
+                  // Format: GHA-{9 digits}-{1 digit}
+                  let formatted = "GHA-";
+                  if (digits.length > 9) {
+                    formatted += digits.substring(0, 9) + "-" + digits.substring(9);
+                  } else {
+                    formatted += digits;
+                  }
+                  
+                  setIdNumber(formatted);
+                }}
+                placeholder="GHA0078142706"
+                maxLength={15}
                 required
               />
 

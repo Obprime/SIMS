@@ -194,6 +194,10 @@ function AdminPage() {
       return [];
     }
 
+    if (activeBranch === ALL_BRANCHES) {
+      return reports;
+    }
+
     return reports.filter((entry) => entry.branchId === activeBranch);
   }, [reports, activeBranch]);
 
@@ -298,8 +302,12 @@ function AdminPage() {
           <p className="subtitle">
             <span className="role-pill">{role === "manager" || role === "gm" ? "MANAGER" : "ADMIN"}</span>
           </p>
+          <p className="manager-indicator">Users: {users.length}</p>
         </div>
         <div className="actions">
+          <button className="btn ghost" type="button" onClick={() => navigate("/admin/reports-by-agent")}>
+            Reports by Agent
+          </button>
           <button className="btn ghost" type="button" onClick={() => navigate("/submit")}>
             Back to Submit
           </button>
@@ -319,8 +327,8 @@ function AdminPage() {
           <p className="stat-value">{totalMonth}</p>
         </article>
         <article className="stat-card">
-          <p className="stat-label">Total Users</p>
-          <p className="stat-value">{users.length}</p>
+          <p className="stat-label">All Time Total</p>
+          <p className="stat-value">{reports.length}</p>
         </article>
         <article className="stat-card">
           <p className="stat-label">Top Agent</p>
@@ -333,6 +341,14 @@ function AdminPage() {
           <h2>Select Branch</h2>
         </div>
         <div className="branch-chip-row">
+          <button
+            key={ALL_BRANCHES}
+            type="button"
+            className={`branch-chip ${activeBranch === ALL_BRANCHES ? "active" : ""}`}
+            onClick={() => setActiveBranch(ALL_BRANCHES)}
+          >
+            ALL_BRANCHES
+          </button>
           {BRANCHES.map((branch) => (
             <button
               key={branch}
@@ -347,13 +363,13 @@ function AdminPage() {
       </section>
 
       {activeBranch ? (
-        <section className="panel table-panel">
+        <section className="panel table-panel manager-filter-panel">
           <div className="panel-head">
             <h2>{activeBranch} Filters</h2>
           </div>
 
-          <div className="filter-grid">
-            <label className="toggle-row">
+          <div className="filter-grid filter-grid-modern">
+            <label className="toggle-row filter-toggle-chip">
               <input
                 type="checkbox"
                 checked={useRange}
@@ -366,19 +382,39 @@ function AdminPage() {
             </label>
 
             {useRange ? (
-              <div className="date-row">
-                <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-                <span>to</span>
-                <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+              <div className="date-row date-row-modern">
+                <div className="date-input-stack">
+                  <span className="date-input-label">From</span>
+                  <input
+                    type="date"
+                    value={fromDate}
+                    placeholder="mm/dd/yyyy"
+                    onChange={(e) => setFromDate(e.target.value)}
+                  />
+                </div>
+                <span className="date-separator">to</span>
+                <div className="date-input-stack">
+                  <span className="date-input-label">To</span>
+                  <input
+                    type="date"
+                    value={toDate}
+                    placeholder="mm/dd/yyyy"
+                    onChange={(e) => setToDate(e.target.value)}
+                  />
+                </div>
               </div>
             ) : (
-              <div className="date-row">
-                <input
-                  type="date"
-                  value={exactDate}
-                  onChange={(e) => setExactDate(e.target.value)}
-                />
-                <span>Exact date filter</span>
+              <div className="date-row date-row-modern">
+                <div className="date-input-stack">
+                  <span className="date-input-label">Date</span>
+                  <input
+                    type="date"
+                    value={exactDate}
+                    placeholder="mm/dd/yyyy"
+                    onChange={(e) => setExactDate(e.target.value)}
+                  />
+                </div>
+                <span className="date-separator">Exact date filter</span>
               </div>
             )}
           </div>
@@ -407,38 +443,6 @@ function AdminPage() {
           </article>
         </section>
       ) : null}
-
-      <section className="panel table-panel">
-        <div className="panel-head">
-          <h2>Reports by Agent</h2>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Agent Email</th>
-                <th>Total Reports</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reportsByAgent.length === 0 ? (
-                <tr className="empty-row">
-                  <td colSpan="3">No data yet.</td>
-                </tr>
-              ) : (
-                reportsByAgent.map(([email, count], idx) => (
-                  <tr key={email}>
-                    <td>{idx + 1}</td>
-                    <td>{email}</td>
-                    <td>{count}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
 
       <section className="panel table-panel">
         <div className="panel-head">

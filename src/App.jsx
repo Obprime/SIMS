@@ -6,6 +6,7 @@ import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import SubmitPage from "./pages/SubmitPage";
 import AdminPage from "./pages/AdminPage";
+import ReportsByAgentPage from "./pages/ReportsByAgentPage";
 
 function App() {
   const { user, role, loading, firebaseConfigError } = useAuth();
@@ -127,6 +128,15 @@ function App() {
         element={
           <AdminRoute>
             <AdminPage />
+          </AdminRoute>
+        }
+      />
+
+      <Route
+        path="/admin/reports-by-agent"
+        element={
+          <AdminRoute>
+            <ReportsByAgentPage />
           </AdminRoute>
         }
       />
