@@ -27,16 +27,11 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState("branch");
+  const [role, setRole] = useState("agent");
   const [branchId, setBranchId] = useState("");
   const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [theme, setTheme] = useState("light");
-
-  const toggleTheme = () => {
-    setTheme((current) => (current === "dark" ? "light" : "dark"));
-  };
 
   const nextPath = location.state?.from;
 
@@ -74,7 +69,7 @@ function LoginPage() {
           throw new Error("Password must be at least 6 characters.");
         }
 
-        if (role !== "manager" && !branchId) {
+        if (role !== "gm" && !branchId) {
           throw new Error("Please select a branch.");
         }
 
@@ -84,7 +79,7 @@ function LoginPage() {
           name: name.trim(),
           email: email.trim(),
           role,
-          branchId: role === "manager" ? null : branchId,
+          branchId: role === "gm" ? null : branchId,
           approved: true,
           createdAt: serverTimestamp(),
         });
@@ -108,25 +103,8 @@ function LoginPage() {
   };
 
   return (
-    <main className={`screen-center auth-shell ${theme === "dark" ? "theme-dark" : "theme-light"}`}>
+    <main className="screen-center auth-shell theme-light">
       <section className="auth-grid">
-        <article className="auth-aside">
-          <p className="eyebrow">Enterprise Collection Suite</p>
-          <h1>SIM Registration Command Center</h1>
-          <p className="auth-help">
-            Secure access for agents and administrators to manage SIM registration intake,
-            verification, and reporting analytics.
-          </p>
-          <button className="theme-toggle" type="button" onClick={toggleTheme}>
-            {theme === "dark" ? "Switch Light" : "Switch Dark"}
-          </button>
-          <ul className="meta-list">
-            <li>Real-time barcode capture workflow</li>
-            <li>Role-based access control</li>
-            <li>Live operational dashboard</li>
-          </ul>
-        </article>
-
         <article className="auth-card">
           <p className="eyebrow">Authorized Access</p>
           <h2>{isRegister ? "Create Account" : "Sign In"}</h2>
@@ -177,19 +155,19 @@ function LoginPage() {
                 <div className="role-grid">
                   <RoleCard
                     label="Branch User"
-                    value="branch"
+                    value="agent"
                     role={role}
                     setRole={setRole}
                   />
                   <RoleCard
-                    label="Manager"
-                    value="manager"
+                    label="GM"
+                    value="gm"
                     role={role}
                     setRole={setRole}
                   />
                 </div>
 
-                {role !== "manager" ? (
+                {role !== "gm" ? (
                   <>
                     <label htmlFor="branchSelect">Branch</label>
                     <select

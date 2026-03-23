@@ -45,7 +45,7 @@ function AdminPage() {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    const q = query(collection(db, "reports"), orderBy("submittedAt", "desc"));
+    const q = query(collection(db, "Sims_reports"), orderBy("submittedAt", "desc"));
     const unsub = onSnapshot(q, (snapshot) => {
       setReports(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
     });
@@ -65,11 +65,17 @@ function AdminPage() {
   }, [activeBranch, exactDate, fromDate, toDate, useRange]);
 
   const parseSubmittedAt = useCallback((report) => {
-    if (!report?.submittedAt) {
+    const value = report?.submittedAt;
+    if (!value) {
       return null;
     }
 
-    const date = new Date(report.submittedAt);
+    if (typeof value === "object" && value && "toDate" in value && typeof value.toDate === "function") {
+      const timestampDate = value.toDate();
+      return Number.isNaN(timestampDate.getTime()) ? null : timestampDate;
+    }
+
+    const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
   }, []);
 
@@ -149,7 +155,7 @@ function AdminPage() {
 
     try {
       setLoadingId(id);
-      await deleteDoc(doc(db, "reports", id));
+      await deleteDoc(doc(db, "Sims_reports", id));
       setReports((prev) => prev.filter((entry) => entry.id !== id));
     } finally {
       setLoadingId(null);
@@ -161,7 +167,7 @@ function AdminPage() {
 
     try {
       setSavingCommentId(id);
-      await updateDoc(doc(db, "reports", id), {
+      await updateDoc(doc(db, "Sims_reports", id), {
         managerComment: draft,
         managerCommentBy: user.email,
         managerCommentedAt: new Date().toISOString(),
@@ -177,14 +183,22 @@ function AdminPage() {
   };
 
   const reportsByAgent = useMemo(() => {
-    const grouped = new Map();
-    reports.forEach((item) => {
-      const key = item.submittedByEmail || "unknown";
-      grouped.set(key, (grouped.get(key) || 0) + 1);
+    const usersByUid = new Map();
+    users.forEach((item) => {
+      usersByUid.set(item.id, item);
     });
 
-    return Array.from(grouped.entries()).sort((a, b) => b[1] - a[1]);
-  }, [reports]);
+    const grouped = new Map();
+    reports.forEach((item) => {
+      const key = item.submittedByUid || item.submittedByEmail || "unknown";
+      const displayName = usersByUid.get(item.submittedByUid)?.name || item.submittedByEmail || "Unknown Agent";
+      const current = grouped.get(key) || { name: displayName, count: 0 };
+      current.count += 1;
+      grouped.set(key, current);
+    });
+
+    return Array.from(grouped.values()).sort((a, b) => b.count - a.count);
+  }, [reports, users]);
 
   const totalToday = useMemo(() => reports.filter(isToday).length, [reports, isToday]);
   const totalMonth = useMemo(() => reports.filter(isThisMonth).length, [reports, isThisMonth]);
@@ -332,7 +346,7 @@ function AdminPage() {
         </article>
         <article className="stat-card">
           <p className="stat-label">Top Agent</p>
-          <p className="stat-value small">{reportsByAgent[0]?.[0] || "-"}</p>
+          <p className="stat-value small">{reportsByAgent[0]?.name || "-"}</p>
         </article>
       </section>
 
@@ -363,7 +377,7 @@ function AdminPage() {
       </section>
 
       {activeBranch ? (
-        <section className="panel table-panel manager-filter-panel">
+        <section className="panel table-panel manager-filter-panel compact-filter-panel">
           <div className="panel-head">
             <h2>{activeBranch} Filters</h2>
           </div>
@@ -471,7 +485,6 @@ function AdminPage() {
                 <th>Phone Number</th>
                 <th>ID Number</th>
                 <th>Branch</th>
-                <th>Agent</th>
                 <th>Manager Comment</th>
                 <th>Submitted At</th>
                 <th>Action</th>
@@ -484,7 +497,7 @@ function AdminPage() {
                 </tr>
               ) : paginatedData.length === 0 ? (
                 <tr className="empty-row">
-                  <td colSpan="9">No records found for selected filter.</td>
+                  <td colSpan="8">No records found for selected filter.</td>
                 </tr>
               ) : (
                 paginatedData.map((item) => (
@@ -494,7 +507,6 @@ function AdminPage() {
                     <td>{item.phoneNumber}</td>
                     <td>{item.idNumber}</td>
                     <td>{item.branchId || "-"}</td>
-                    <td>{item.submittedByEmail || "-"}</td>
                     <td>
                       <div className="comment-cell">
                         <input

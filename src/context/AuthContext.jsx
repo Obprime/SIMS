@@ -34,13 +34,13 @@ export function AuthProvider({ children }) {
 
       try {
         const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-          const data = userDoc.exists() ? userDoc.data() : { role: "branch" };
-          const nextRole = data.role || "branch";
+          const data = userDoc.exists() ? userDoc.data() : { role: "agent" };
+          const nextRole = data.role || "agent";
         setProfile(data);
-          setRole(nextRole || "branch");
+          setRole(nextRole || "agent");
       } catch {
-          setProfile({ role: "branch" });
-          setRole("branch");
+          setProfile({ role: "agent" });
+          setRole("agent");
       } finally {
         setLoading(false);
       }

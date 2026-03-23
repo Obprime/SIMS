@@ -15,7 +15,7 @@ function ReportsByAgentPage() {
   const [exactDate, setExactDate] = useState("");
 
   useEffect(() => {
-    const reportsQuery = query(collection(db, "reports"), orderBy("submittedAt", "desc"));
+    const reportsQuery = query(collection(db, "Sims_reports"), orderBy("submittedAt", "desc"));
     const usersQuery = query(collection(db, "users"));
 
     const unsubReports = onSnapshot(reportsQuery, (snapshot) => {
@@ -41,11 +41,17 @@ function ReportsByAgentPage() {
   }, [users]);
 
   const parseSubmittedAt = (report) => {
-    if (!report?.submittedAt) {
+    const value = report?.submittedAt;
+    if (!value) {
       return null;
     }
 
-    const date = new Date(report.submittedAt);
+    if (typeof value === "object" && value && "toDate" in value && typeof value.toDate === "function") {
+      const timestampDate = value.toDate();
+      return Number.isNaN(timestampDate.getTime()) ? null : timestampDate;
+    }
+
+    const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
   };
 
@@ -134,7 +140,7 @@ function ReportsByAgentPage() {
         </div>
       </header>
 
-      <section className="panel table-panel">
+      <section className="panel table-panel compact-filter-panel">
         <div className="panel-head">
           <h2>Date Filter</h2>
         </div>

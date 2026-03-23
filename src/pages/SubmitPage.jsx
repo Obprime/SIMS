@@ -8,6 +8,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
   setDoc,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
@@ -15,7 +16,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 
-const REPORTS_COLLECTION = "reports";
+const REPORTS_COLLECTION = "Sims_reports";
 const SCAN_SESSIONS_COLLECTION = "scanSessions";
 
 function SubmitPage({ mobileMode = false }) {
@@ -235,7 +236,7 @@ function SubmitPage({ mobileMode = false }) {
               await setDoc(doc(db, SCAN_SESSIONS_COLLECTION, mobileSessionId), {
                 serialNumber: normalizedSerial,
                 submittedByUid: user.uid,
-                submittedAt: new Date().toISOString(),
+                submittedAt: serverTimestamp(),
               });
 
               triggerScanConfirmation();
@@ -321,8 +322,14 @@ function SubmitPage({ mobileMode = false }) {
       return;
     }
 
+    if (!db) {
+      setFeedback("Firebase is not configured. Verify project settings and refresh.", "error");
+      return;
+    }
+
     try {
       await addDoc(collection(db, REPORTS_COLLECTION), {
+        agentId: user.uid,
         serialNumber: serialNumber.trim(),
         customerName: customerName.trim(),
         phoneNumber,
@@ -330,7 +337,7 @@ function SubmitPage({ mobileMode = false }) {
         branchId: profile?.branchId || null,
         submittedByUid: user.uid,
         submittedByEmail: user.email,
-        submittedAt: new Date().toISOString(),
+        submittedAt: serverTimestamp(),
       });
 
       setCustomerName("");
@@ -341,7 +348,21 @@ function SubmitPage({ mobileMode = false }) {
       setTimeout(() => {
         navigate("/dashboard");
       }, 350);
-    } catch {
+    } catch (error) {
+      const code = typeof error === "object" && error && "code" in error
+        ? String(error.code)
+        : "";
+
+      if (code === "permission-denied") {
+        setFeedback("Submission blocked by Firestore rules. Ensure your users/{uid}.role is agent or branch_head and report payload includes agentId.", "error");
+        return;
+      }
+
+      if (code) {
+        setFeedback(`Submission failed (${code}).`, "error");
+        return;
+      }
+
       setFeedback("Submission failed. Check Firebase permissions.", "error");
     }
   };

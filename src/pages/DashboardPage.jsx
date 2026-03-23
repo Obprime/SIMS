@@ -1,26 +1,64 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 
-const REPORTS_COLLECTION = "reports";
+const REPORTS_COLLECTION = "Sims_reports";
 
 function DashboardPage() {
   const { user, role, profile, logout } = useAuth();
   const navigate = useNavigate();
   const [reports, setReports] = useState([]);
   const [activeFilter, setActiveFilter] = useState("today");
+  const [loadError, setLoadError] = useState("");
+  const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, REPORTS_COLLECTION), orderBy("submittedAt", "desc"));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const entries = snapshot.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
-      setReports(entries);
-    });
+    if (!db || !user?.uid) {
+      setReports([]);
+      return undefined;
+    }
+
+    let reportsQuery;
+    if (role === "gm") {
+      reportsQuery = query(collection(db, REPORTS_COLLECTION), orderBy("submittedAt", "desc"));
+    } else {
+      reportsQuery = query(
+        collection(db, REPORTS_COLLECTION),
+        where("agentId", "==", user.uid),
+        orderBy("submittedAt", "desc")
+      );
+    }
+
+    const unsub = onSnapshot(
+      reportsQuery,
+      (snapshot) => {
+        setLoadError("");
+        const entries = snapshot.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
+        setReports(entries);
+      },
+      (error) => {
+        setReports([]);
+        const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+        if (code === "permission-denied") {
+          setLoadError("Access denied: your role must be agent or branch_head, and each report must include agentId equal to your UID.");
+          return;
+        }
+        if (code === "failed-precondition") {
+          setLoadError("Query needs a Firestore index. Create the suggested index in Firebase Console, then refresh.");
+          return;
+        }
+        if (code === "unavailable") {
+          setLoadError("Firestore is temporarily unavailable. Check internet connection and try again.");
+          return;
+        }
+        setLoadError(code ? `Unable to load reports (${code}). Please try again.` : "Unable to load reports. Please try again.");
+      }
+    );
 
     return unsub;
-  }, []);
+  }, [role, user?.uid]);
 
   const startOfToday = useMemo(() => {
     const now = new Date();
@@ -43,48 +81,93 @@ function DashboardPage() {
   }, []);
 
   const scopedReports = useMemo(() => {
-    if (role === "manager" || role === "gm" || role === "admin") {
+    if (role === "gm") {
       return reports;
     }
 
-    if (profile?.branchId) {
-      return reports.filter((entry) => entry.branchId === profile.branchId);
+    return reports.filter((entry) => (entry.agentId || entry.submittedByUid) === user.uid);
+  }, [reports, role, user.uid]);
+
+  const parseSubmittedAt = (entry) => {
+    const value = entry?.submittedAt;
+    if (!value) {
+      return null;
     }
 
-    return reports.filter((entry) => entry.submittedByUid === user.uid);
-  }, [reports, role, profile?.branchId, user.uid]);
+    if (typeof value === "object" && value && "toDate" in value && typeof value.toDate === "function") {
+      const timestampDate = value.toDate();
+      return Number.isNaN(timestampDate.getTime()) ? null : timestampDate;
+    }
+
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
 
   const totalToday = useMemo(() => {
-    return scopedReports.filter((entry) => new Date(entry.submittedAt) >= startOfToday).length;
+    return scopedReports.filter((entry) => {
+      const date = parseSubmittedAt(entry);
+      return date ? date >= startOfToday : false;
+    }).length;
   }, [scopedReports, startOfToday]);
 
   const totalWeek = useMemo(() => {
-    return scopedReports.filter((entry) => new Date(entry.submittedAt) >= startOfWeek).length;
+    return scopedReports.filter((entry) => {
+      const date = parseSubmittedAt(entry);
+      return date ? date >= startOfWeek : false;
+    }).length;
   }, [scopedReports, startOfWeek]);
 
   const totalMonth = useMemo(() => {
-    return scopedReports.filter((entry) => new Date(entry.submittedAt) >= startOfMonth).length;
+    return scopedReports.filter((entry) => {
+      const date = parseSubmittedAt(entry);
+      return date ? date >= startOfMonth : false;
+    }).length;
   }, [scopedReports, startOfMonth]);
 
   const mySubmissions = useMemo(() => {
-    return reports.filter((entry) => entry.submittedByUid === user.uid).length;
+    return reports.filter((entry) => (entry.agentId || entry.submittedByUid) === user.uid).length;
   }, [reports, user.uid]);
 
   const filteredReports = useMemo(() => {
     if (activeFilter === "today") {
-      return scopedReports.filter((entry) => new Date(entry.submittedAt) >= startOfToday);
+      return scopedReports.filter((entry) => {
+        const date = parseSubmittedAt(entry);
+        return date ? date >= startOfToday : false;
+      });
     }
 
     if (activeFilter === "week") {
-      return scopedReports.filter((entry) => new Date(entry.submittedAt) >= startOfWeek);
+      return scopedReports.filter((entry) => {
+        const date = parseSubmittedAt(entry);
+        return date ? date >= startOfWeek : false;
+      });
     }
 
     if (activeFilter === "month") {
-      return scopedReports.filter((entry) => new Date(entry.submittedAt) >= startOfMonth);
+      return scopedReports.filter((entry) => {
+        const date = parseSubmittedAt(entry);
+        return date ? date >= startOfMonth : false;
+      });
     }
 
     return scopedReports;
   }, [activeFilter, scopedReports, startOfMonth, startOfToday, startOfWeek]);
+
+  const activeFilterLabel = useMemo(() => {
+    if (activeFilter === "today") {
+      return "Today";
+    }
+
+    if (activeFilter === "week") {
+      return "This Week";
+    }
+
+    if (activeFilter === "month") {
+      return "This Month";
+    }
+
+    return "All Time";
+  }, [activeFilter]);
 
   const onLogout = async () => {
     await logout();
@@ -106,7 +189,7 @@ function DashboardPage() {
           <button className="btn ghost" onClick={() => navigate("/submit")} type="button">
             Submit New Report
           </button>
-          {role === "manager" || role === "gm" || role === "admin" ? (
+          {role === "gm" ? (
             <button className="btn ghost" onClick={() => navigate("/admin")} type="button">
               Manager Portal
             </button>
@@ -126,7 +209,10 @@ function DashboardPage() {
           <button 
             className="view-details-btn"
             type="button"
-            onClick={() => setActiveFilter("today")}
+            onClick={() => {
+              setActiveFilter("today");
+              setShowDetails(true);
+            }}
           >
             View Details
           </button>
@@ -139,7 +225,10 @@ function DashboardPage() {
           <button 
             className="view-details-btn"
             type="button"
-            onClick={() => setActiveFilter("week")}
+            onClick={() => {
+              setActiveFilter("week");
+              setShowDetails(true);
+            }}
           >
             View Details
           </button>
@@ -152,7 +241,10 @@ function DashboardPage() {
           <button 
             className="view-details-btn"
             type="button"
-            onClick={() => setActiveFilter("month")}
+            onClick={() => {
+              setActiveFilter("month");
+              setShowDetails(true);
+            }}
           >
             View Details
           </button>
@@ -165,12 +257,59 @@ function DashboardPage() {
           <button 
             className="view-details-btn"
             type="button"
-            onClick={() => setActiveFilter("all")}
+            onClick={() => {
+              setActiveFilter("all");
+              setShowDetails(true);
+            }}
           >
             View Details
           </button>
         </article>
       </section>
+
+      {showDetails ? (
+      <section className="panel table-panel">
+        <div className="panel-head">
+          <h2>{activeFilterLabel} Details</h2>
+        </div>
+        <p className="helper">
+          Showing {filteredReports.length} records. My total submissions: {mySubmissions}.
+        </p>
+
+        {loadError ? <p className="form-message error">{loadError}</p> : null}
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Submitted At</th>
+                <th>Serial Number</th>
+                <th>Customer Name</th>
+                <th>Phone Number</th>
+                <th>ID Number</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredReports.length === 0 ? (
+                <tr className="empty-row">
+                  <td colSpan="5">No submissions found for this filter.</td>
+                </tr>
+              ) : (
+                filteredReports.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>{parseSubmittedAt(entry)?.toLocaleString() || "-"}</td>
+                    <td>{entry.serialNumber || "-"}</td>
+                    <td>{entry.customerName || "-"}</td>
+                    <td>{entry.phoneNumber || "-"}</td>
+                    <td>{entry.idNumber || "-"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      ) : null}
     </main>
   );
 }

@@ -155,6 +155,17 @@ h2 {
   font-size: 1.45rem;
 }
 
+.auth-card input,
+.auth-card select {
+  border: 1.5px solid #9fb5d1;
+  background: #ffffff;
+}
+
+.panel input,
+.panel select {
+  border: 1.5px solid #9fb5d1;
+}
+
 .theme-toggle {
   margin-top: 0.8rem;
   border: 1px solid rgba(147, 197, 253, 0.5);
@@ -421,10 +432,14 @@ h1 {
   position: relative;
   margin-bottom: 0.6rem;
   border-radius: 12px;
+  width: min(100%, 390px);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .reader-shell .reader {
   margin-bottom: 0;
+  min-height: 160px;
 }
 
 .scan-success {
@@ -647,6 +662,23 @@ select:focus {
   background: linear-gradient(145deg, #ffffff 0%, #f6faff 100%);
 }
 
+.compact-filter-panel {
+  margin-top: 0.55rem;
+  padding: 0.55rem 0;
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  border-radius: 0;
+}
+
+.compact-filter-panel .panel-head {
+  margin-bottom: 0.2rem;
+}
+
+.compact-filter-panel h2 {
+  font-size: 0.95rem;
+}
+
 .filter-grid-modern {
   gap: 0.55rem;
 }
@@ -733,6 +765,12 @@ select:focus {
   align-items: center;
 }
 
+
+.toggle-row input[type="checkbox"] {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+}
 .date-row span {
   color: #51627a;
   font-size: 0.86rem;
@@ -865,6 +903,14 @@ thead th {
 
   .reader {
     min-height: 200px;
+  }
+
+  .reader-shell {
+    width: min(100%, 320px);
+  }
+
+  .reader-shell .reader {
+    min-height: 140px;
   }
 
   .comment-cell {
